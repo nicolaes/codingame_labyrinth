@@ -36,7 +36,7 @@ def add_loc(dir1, dir2):
 def sub_loc(dir1, dir2):
     return (dir1[0] - dir2[0], dir1[1] - dir2[1])
 
-def discover_and_reach_control(map: Map, rick_loc: Loc) -> Optional[Loc]:
+def discover_and_reach_control(map: Map, rick_loc: Loc, back_to_start = False) -> Optional[Loc]:
     rick_frontier = FrontierPoint(rick_loc, None)
 
     frontier: queue.SimpleQueue[FrontierPoint] = queue.SimpleQueue()
@@ -46,12 +46,15 @@ def discover_and_reach_control(map: Map, rick_loc: Loc) -> Optional[Loc]:
 
     # Remember if current search includes the Control point
     control_frontier: Optional[FrontierPoint] = None
-
+    
     while not frontier.empty():
         current = frontier.get()
         
         if map[current.loc].c == "?":
             # Go to first undiscovered direction
+            return current.used_direction
+
+        if back_to_start and map[current.loc].c == 'T':
             return current.used_direction
 
         for direction in directions_around(map, current.loc, \
@@ -129,7 +132,7 @@ while True:
         # This means all labyrinth was discovered, and Rick reached control
         # Switch to retreat mode
         is_discovery_mode = False
-        next_dir = sub_loc(map[rick_loc].coming_from.loc, rick_loc)
+        next_dir = discover_and_reach_control(map, rick_loc, True)
     
     
     # Rick's next move (UP DOWN LEFT or RIGHT).
