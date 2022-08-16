@@ -26,14 +26,9 @@ commands = dict(zip(all_directions, ["LEFT", "DOWN", "RIGHT", "UP"]))
 
 # Globals: start
 start: Point = Point('-', (0, 0))
-control: Union[Point, None] = None
 
 def log(*args):
     print(*args, file=sys.stderr, flush=True)
-
-def in_range(center, to):
-    rx, ry = sub_loc(center, to)
-    return abs(rx) <= 2 and abs(ry) <= 2
 
 def add_loc(dir1, dir2):
     return (dir1[0] + dir2[0], dir1[1] + dir2[1])
@@ -41,7 +36,7 @@ def add_loc(dir1, dir2):
 def sub_loc(dir1, dir2):
     return (dir1[0] - dir2[0], dir1[1] - dir2[1])
 
-def first_undiscovered_direction(map: Map, rick_loc: Loc):
+def discover_and_reach_control(map: Map, rick_loc: Loc) -> Optional[Loc]:
     rick_frontier = FrontierPoint(rick_loc, None)
 
     frontier: queue.SimpleQueue[FrontierPoint] = queue.SimpleQueue()
@@ -49,39 +44,45 @@ def first_undiscovered_direction(map: Map, rick_loc: Loc):
     reached: set[Loc] = set()
     reached.add(rick_loc)
 
+    # Remember if current search includes the Control point
+    control_frontier: Optional[FrontierPoint] = None
+
     while not frontier.empty():
         current = frontier.get()
         
         if map[current.loc].c == "?":
+            # Go to first undiscovered direction
             return current.used_direction
 
-        for direction in directions_around(map, current.loc, lambda c, _: c in {'.', 'T', '?'}):
+        for direction in directions_around(map, current.loc, \
+                lambda c, _: c != '#'):
             next_loc = add_loc(current.loc, direction)
+            next_map_point = map[next_loc]
+
             if next_loc not in reached:
                 # A* params
-                next_map_point = map[next_loc]
                 if not next_map_point.coming_from or \
                         cast(int, next_map_point.steps_to_start) > \
                         cast(int, map[current.loc].steps_to_start) + 1:
                     next_map_point.coming_from = map[current.loc]
                     next_map_point.steps_to_start = cast(int, map[current.loc].steps_to_start) + 1
 
-                # Add next frontiers
+                
+                reached.add(next_loc)
                 next_frontier_point = FrontierPoint(next_loc, \
                     current.used_direction if current.used_direction else direction)
-                frontier.put(next_frontier_point)
-                reached.add(next_loc)
+                if next_map_point.c != 'C':
+                    # Add next frontier
+                    # Don't go to C until rest is explored
+                    frontier.put(next_frontier_point)    
+                else:
+                    control_frontier = next_frontier_point
+
+    # If no undiscovered point was found, send Rick to control
+    if control_frontier != None:
+        return control_frontier.used_direction
 
     return None
-
-    # > for frontier (start at current position)
-    # >   if is_question_mark, return "used_direction"
-    # >   get next frontiers (., ? or T - starting point)
-    # >   if not MapPoint.coming_from and MapPoint.steps_to_start: compute it
-    # >   if not FrontierPoint.coming_from and FrontierPoint.steps_to_start: compute it
-    # >   create new FrontierPoint (only has "used_direction") and add it to queue
-    #       steps_to_start is not required anymore, because FrontierPoint is computet at every iteration
-    #       so you can't get to that point in any better way
 
 def directions_around(map: Map, rick: Loc, point_filter = None):
     directions = []
@@ -99,6 +100,7 @@ def directions_around(map: Map, rick: Loc, point_filter = None):
 r, c, a = [int(i) for i in input().split()]
 
 # game loop
+is_discovery_mode = True # if not, it's going back to start
 map = dict()
 while True:
     # kr: row where Rick is located.
@@ -113,28 +115,22 @@ while True:
                 map[map_loc] = Point(point_char, map_loc)
             elif map[map_loc].c != point_char:
                 map[map_loc].c = point_char
-    
+
+    # Get start on first round
     if start.c == "-":
         start = map[rick_loc]
         start.coming_from = start
         start.steps_to_start = 0
-
-    # Discover
-    next_dir = first_undiscovered_direction(map, rick_loc)
     
-    # Plan each round:
-    # > ### 1. Exploration: get next step
-    # > get next frontier (., ? or T - starting point)
-    # >   if not Point.coming_from and Point.steps_to_start: compute it
-    # >   if is_question_mark, go in this direction:
-    #        track the "coming_from" of current point until RICK, then compute direction
-    # >   add next frontiers
-
-    # 2. Go to control point
-    # 3. Track back to T using "coming_from"
-
-    # Write an action using print
-    # To debug: print("Debug messages...", file=sys.stderr, flush=True)
-
+    next_dir: Optional[Loc] = None
+    if is_discovery_mode and map[rick_loc].c != 'C':
+        next_dir = discover_and_reach_control(map, rick_loc)
+    else:
+        # This means all labyrinth was discovered, and Rick reached control
+        # Switch to retreat mode
+        is_discovery_mode = False
+        next_dir = sub_loc(map[rick_loc].coming_from.loc, rick_loc)
+    
+    
     # Rick's next move (UP DOWN LEFT or RIGHT).
     print(commands[next_dir])
